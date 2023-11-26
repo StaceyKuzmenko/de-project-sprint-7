@@ -22,10 +22,10 @@ dag_spark = DAG(
     catchup=False,
 )
     
-user_mart = SparkSubmitOperator(
-    task_id="user_mart",
+users_mart = SparkSubmitOperator(
+    task_id="users_mart",
     dag=dag_spark,
-    application="/lessons/user_mart.py",
+    application="/lessons/users_mart.py",
     conn_id="yarn_spark",
     application_args=[
         "2022-05-31",
@@ -79,4 +79,4 @@ recommendations_mart = SparkSubmitOperator(
     executor_memory = "2g"
 )
 
-user_mart >> geo_mart >> recommendations_mart
+users_mart >> geo_mart >> recommendations_mart
