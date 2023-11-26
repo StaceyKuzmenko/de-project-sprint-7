@@ -58,52 +58,8 @@ def input_paths(date, depth, events_path):
 cities = spark.read.csv("/user/staceykuzm/geo.csv", sep = ";", header = True) \
         .withColumn("lat", F.col("lat").cast(DoubleType())) \
         .withColumn("lng", F.col("lng").cast(DoubleType())) \
-        .withColumnRenamed("lat", "lat_c")
+        .withColumnRenamed("lat", "lat_c") \
         .withColumnRenamed("lng", "lng_c")
-
-messages_cities = (
-    events_messages.crossJoin(cities)
-    .withColumn(
-        "distance",
-        udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast(
-            "float"
-        ),
-    )
-    .withColumn(
-        "distance_rank",
-        F.row_number().over(
-            Window().partitionBy(["user_id", "message_id"]).orderBy("distance")
-        ),
-    )
-    .where("distance_rank == 1")
-    .select ("user_id", "messages_id", "date", "datetime", "city", "timezone")
-)
-
-active_messages_cities = (
-    events_messages.withColumn(
-        "datetime_rank",
-        F.row_number().over(
-            Window().partitionBy(["user_id"]).orderBy(F.desc("datetime"))
-        ),
-    )
-    .where("datetime_rank == 1")
-    .orderBy("user_id")
-    .crossJoin(cities)
-    .withColumn(
-        "distance",
-        udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast(
-            "float"
-        ),
-    )
-    .withColumn(
-        "distance_rank",
-        F.row_number().over(
-            Window().partitionBy(["user_id"]).orderBy(F.asc("distance"))
-        ),
-    )
-    .where("distance_rank == 1")
-    .select("user_id", F.col("city").alias("act_city"), "date", "timezone")
-) 
 
 def main():
 
@@ -136,6 +92,49 @@ def main():
             "lon",
         )
     )
+
+    messages_cities = (
+        events_messages.crossJoin(cities)
+        .withColumn(
+            "distance",
+            udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast(
+            "float"
+            ),
+        )
+        .withColumn(
+            "distance_rank",
+            F.row_number().over(
+                Window().partitionBy(["user_id", "message_id"]).orderBy("distance")
+            ),
+        )
+        .where("distance_rank == 1")
+        .select ("user_id", "messages_id", "date", "datetime", "city", "timezone")
+    )
+
+    active_messages_cities = (
+        events_messages.withColumn(
+            "datetime_rank",
+            F.row_number().over(
+                Window().partitionBy(["user_id"]).orderBy(F.desc("datetime"))
+            ),
+        )
+        .where("datetime_rank == 1")
+        .orderBy("user_id")
+        .crossJoin(cities)
+        .withColumn(
+            "distance",
+            udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast("float"),
+        )
+        .withColumn(
+            "distance_rank",
+            F.row_number().over(
+                Window().partitionBy(["user_id"]).orderBy(F.asc("distance"))
+            ),
+        )
+        .where("distance_rank == 1")
+        .select("user_id", F.col("city").alias("act_city"), "date", "timezone")
+    ) 
+
 
     # рассчитываем таблицу с изменениями города отправки сообщения
     temp_df = (
