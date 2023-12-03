@@ -92,12 +92,12 @@ def main():
             "lon",
         )
     )
-
+    # вычисляем датасет со всеми сообщениями пользователей, временем отправки, города и временной зоны
     messages_cities = (
         events_messages.crossJoin(cities)
         .withColumn(
             "distance",
-            udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast(
+            udf_func(F.col("lat"), F.col("lat_c"), F.col("lon"), F.col("lng_c")).cast(
             "float"
             ),
         )
@@ -108,9 +108,10 @@ def main():
             ),
         )
         .where("distance_rank == 1")
-        .select ("user_id", "messages_id", "date", "datetime", "city", "timezone")
+        .select ("user_id", "message_id", "date", "datetime", "city", "timezone")
     )
-
+    
+    # вычисляем актуальный адрес (откуда было отправлено последнее сообщение)
     active_messages_cities = (
         events_messages.withColumn(
             "datetime_rank",
@@ -123,7 +124,7 @@ def main():
         .crossJoin(cities)
         .withColumn(
             "distance",
-            udf_func(F.col("lat"), F.col("lat_c"), F.col("lng"), F.col("lng_c")).cast("float"),
+            udf_func(F.col("lat"), F.col("lat_c"), F.col("lon"), F.col("lng_c")).cast("float"),
         )
         .withColumn(
             "distance_rank",
@@ -143,11 +144,12 @@ def main():
         )
         .withColumn(
             "city_lag",
-            F.lead("act_city", 1, "empty").over(
+            F.lead("city", 1, "empty").over(
                 Window().partitionBy("user_id").orderBy(F.col("date").desc())
             ),
         )
-        .filter(F.col("act_city") != F.col("city_lag"))
+        .filter(F.col("city") != F.col("city_lag"))
+        .select("user_id", "message_id", "date", "datetime", "city", "timezone", "max_date", "city_lag") 
     )
 
     # рассчитываем адрес города, из которого были отправлены 27 дней подряд сообщения от пользователя
@@ -171,7 +173,7 @@ def main():
             ),
         )
         .where(F.col("rank") == 1)
-        .drop("date_diff", "date_lag", "max_date", "city_lag", "rank")
+        .select("user_id", "home_city")
     )
 
     # рассчитываем кол-во смен города по каждому пользователю и список городов, которые посетил пользователь
@@ -183,11 +185,12 @@ def main():
     # рассчитываем локальное время
     time_local = active_messages_cities.withColumn(
         "localtime", F.from_utc_timestamp(F.col("date"), F.col("timezone"))
-    ).drop("timezone", "city", "date", "datetime", "act_city")
+    ).select("user_id", "localtime")
 
     # объединяем все данные в одну витрину
+    
     final = (
-        active_messages_cities.select("user_id", "act_city")
+        active_messages_cities
         .join(home_city, "user_id", "left")
         .join(travel_list, "user_id", "left")
         .join(time_local, "user_id", "left")
