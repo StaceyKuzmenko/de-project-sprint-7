@@ -61,12 +61,6 @@ cities = spark.read.csv("/user/staceykuzm/geo.csv", sep = ";", header = True) \
 
 def main():
 
-    spark = (
-        SparkSession.builder.master("local")
-        .appName("Learning DataFrames")
-        .getOrCreate()
-    )
-
     paths = input_paths(date, depth, events_path)
 
     events = spark.read.option("basePath", events_path).parquet(*paths)
@@ -148,7 +142,7 @@ def main():
     #определяем подписки
     events_subscriptions_unix = events_unix("subscription")
     
-    w = Window.partitionBy("time")
+    w = Window.partitionBy("user_right")
     #пишем функцию, которая определяет последние сообщения/подписки
     def events_result (events_filtered_unix):
         return(
@@ -263,12 +257,13 @@ def main():
         .withColumn("local_time", date_format(col("local_datetime"), "HH:mm:ss"))
         .select("user_left", "user_right", "processed_dttm", "zone_id", "local_time")
     )
-
+    
     # записывем в формате parquet..
     recommendations.write.mode("overwrite").parquet(
         f"{target_path}/mart/recommendations/"
-    )    
-    
-    
+    )          
+
+
 if __name__ == "__main__":
+
     main()

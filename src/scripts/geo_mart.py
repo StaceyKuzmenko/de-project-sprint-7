@@ -61,12 +61,6 @@ cities = spark.read.csv("/user/staceykuzm/geo.csv", sep = ";", header = True) \
 
 def main():
 
-    spark = (
-        SparkSession.builder.master("local")
-        .appName("Learning DataFrames")
-        .getOrCreate()
-    )
-
     paths = input_paths(date, depth, events_path)
 
     events = spark.read.option("basePath", events_path).parquet(*paths)
@@ -95,9 +89,10 @@ def main():
     events_subscriptions = events_types("subscription")
     
     #добавим наименования городов к получившимся датасетам
-    all_messages = events_messages.crossJoin(cities.hint("broadcast")).select("user_id", "message_id", "lat", "lon", "date", "city", "lat_c", "lng_c", "timezone")
-    all_reactions = events_reactions.crossJoin(cities.hint("broadcast")).select("user_id", "message_id", "lat", "lon", "date", "city", "lat_c", "lng_c", "timezone")
-    all_subscriptions = events_subscriptions.crossJoin(cities.hint("broadcast")).select("user_id", "message_id", "lat", "lon", "date", "city", "lat_c", "lng_c", "timezone")    
+    cols = ["user_id", "message_id", "lat", "lon", "date", "city", "lat_c", "lng_c", "timezone"]
+    all_messages = events_messages.crossJoin(cities.hint("broadcast")).select(cols)
+    all_reactions = events_reactions.crossJoin(cities.hint("broadcast")).select(cols)
+    all_subscriptions = events_subscriptions.crossJoin(cities.hint("broadcast")).select(cols)    
     
     #добавим столбец с дистанцией (по координатам пользователей) к получившимся выше датасетам
     messages_distances = all_messages.withColumn(
@@ -121,7 +116,7 @@ def main():
             event_dataset.withColumn(
                 "row",
                 F.row_number().over(
-                    Window.partitionBy("user_id", "date", "message_id").orderBy(F.col("date").asc())
+                    Window.partitionBy("user_id", "date", "message_id").orderBy(F.col("distance").asc())
                 ),
             )
             .filter(F.col("row") == 1)
@@ -129,13 +124,13 @@ def main():
             .withColumnRenamed("city", "zone_id")
         )   
 
-    #определяем координаты города, из которого конктерный пользователь отправил последнее сообщение
+    #определяем координаты города, из которого конкретный пользователь отправил последнее сообщение
     latest_message_dataset = latest_event(messages_distances)
 
-    #определяем координаты города, из которого конктерный пользователь отправил последнее сообщение
+    #определяем координаты города, из которого конкретный пользователь отправил последнюю реакцию
     latest_reaction_dataset = latest_event(reactions_distances)
 
-    #определяем координаты города, из которого конктерный пользователь отправил последнее сообщение
+    #определяем координаты города, из которого конкретный пользователь сделал последнюю подписку
     latest_subscription_dataset = latest_event(subscriptions_distances)    
     
     # расчёт всех сообщений по определённому выше городу с разбивкой по неделям и месяцам
